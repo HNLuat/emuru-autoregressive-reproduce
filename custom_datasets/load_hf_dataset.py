@@ -328,7 +328,7 @@ class DataLoaderManager:
         val_set = IAMWordDataset(
             root=root,
             csv_path=label_csv,
-            split="val",
+            split="eval",
             alphabet=self.alphabet,
             transform=iam_transform,
         )
