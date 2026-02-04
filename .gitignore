@@ -216,3 +216,10 @@ results_t5/
 results_htr/
 results_vae/
 HWD/
+
+# vscode settings
+.vscode/
+
+
+# test
+test.py

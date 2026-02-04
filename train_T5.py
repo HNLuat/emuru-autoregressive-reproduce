@@ -89,7 +89,7 @@ def train():
     parser.add_argument("--logging_dir", type=str, default='results_t5', help="logging directory")
     parser.add_argument("--train_batch_size", type=int, default=2, help="train batch size") 
     parser.add_argument("--eval_batch_size", type=int, default=8, help="eval batch size")
-    parser.add_argument("--epochs", type=int, default=10000, help="number of train epochs")
+    parser.add_argument("--epochs", type=int, default=100, help="number of train epochs")
     parser.add_argument("--lr", type=float, default=1e-4, help="learning rate")
     parser.add_argument("--lr_scheduler", type=str, default="reduce_lr_on_plateau")
     parser.add_argument("--lr_scheduler_patience", type=int, default=10)
@@ -100,8 +100,8 @@ def train():
     parser.add_argument("--run_id", type=str, default=uuid.uuid4().hex[:4], help="uuid of the run")
     parser.add_argument("--report_to", type=str, default=None)
     parser.add_argument("--wandb_entity", type=str, default=None)
-    parser.add_argument("--wandb_project_name", type=str, default="emuru-T5", help="wandb project name")
-    parser.add_argument('--wandb_log_interval_steps', type=int, default=25, help="wandb log interval")
+    parser.add_argument("--wandb_project_name", type=str, default="iam-handwriting-emuru", help="wandb project name")
+    parser.add_argument('--wandb_log_interval_steps', type=int, default=5, help="wandb log interval")
 
     parser.add_argument("--vae_path", type=str, default="blowing-up-groundhogs/emuru_vae", help='vae checkpoint path')
 
@@ -183,18 +183,27 @@ def train():
         raise ValueError(f"Invalid training type: {args.training_type}")
 
     data_loader = DataLoaderManager(
-        train_pattern=train_pattern,
-        eval_pattern=eval_pattern,
+        train_pattern=None,
+        eval_pattern=None,
         train_batch_size=args.train_batch_size,
         eval_batch_size=args.eval_batch_size,
-        num_workers=4,
+        num_workers=0,
         pin_memory=False,
         persistent_workers=False,
         tokenizer=model.tokenizer,
     )
-    train_loader = data_loader.create_dataset('train', 't5')
-    eval_loader = data_loader.create_dataset('eval', 't5')
+    # train_loader = data_loader.create_dataset('train', 't5')
+    # eval_loader = data_loader.create_dataset('eval', 't5')
     karaoke_loader = data_loader.create_karaoke_dataset()
+    dataset_dir = "C:\\Users\\LENOVO\\Documents\\Python Project\\Handwritting_gen\\iam_word_dataset\\preprocessed_style"
+    train_loader, eval_loader = data_loader.create_iam_dataset(
+        root=f"{dataset_dir}\\images",
+        label_csv=f"{dataset_dir}\\labels.csv",
+        model_type="t5",   # hoặc 'vae', 'wid'
+    )
+    NUM_SAMPLES_TRAIN = len(train_loader.dataset)
+    NUM_SAMPLES_EVAL = len(eval_loader.dataset)
+
 
     LEN_EVAL_LOADER = NUM_SAMPLES_EVAL // args.eval_batch_size
 
@@ -235,6 +244,13 @@ def train():
             logger.info(f"  Resuming from checkpoint at epoch {train_state.epoch}")
         except FileNotFoundError as e:
             logger.warning(f"  Checkpoint not found: {e}. Creating a new run")
+
+    wandb.login()
+    wandb.init(
+        project=args.wandb_project_name,
+        name="train_T5", 
+        config=vars(args)
+    )
 
     progress_bar = tqdm(range(train_state.global_step, args.max_train_steps), disable=not accelerator.is_local_main_process)
     progress_bar.set_description("Steps")

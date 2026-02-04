@@ -1,16 +1,22 @@
 from typing import Optional, Union
 from pathlib import Path
+import json
+import os
+import pandas as pd
 
+from cv2 import transform
 import torch
 import webdataset as wds
 from einops import rearrange
 from torchvision import transforms
-from torch.utils.data import DataLoader, Dataset, ConcatDataset
+from torch.utils.data import DataLoader, Dataset, ConcatDataset, random_split
 from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoTokenizer
 from PIL import Image
 import torchvision.transforms as T
 from hwd.datasets.shtg import KaraokeLines
+import torchvision.transforms.functional as TF
+
 
 from .alphabet import Alphabet
 from .constants import FONT_SQUARE_CHARSET
@@ -156,6 +162,42 @@ def karaoke_collate_fn(batch):
             out[key] = values
     return out
 
+class IAMWordDataset(Dataset):
+    def __init__(self, root, csv_path, split, alphabet, transform):
+        self.root = root
+        self.alphabet = alphabet
+        self.transform = transform
+
+        df = pd.read_csv(csv_path)
+        df = df[df["split"] == split].reset_index(drop=True)
+        self.df = df
+
+    def __len__(self):
+        return len(self.df)
+
+    def __getitem__(self, idx):
+        row = self.df.iloc[idx]
+
+        img_path = os.path.join(self.root, row["image"])
+        img = Image.open(img_path)
+
+        rgb = img.convert("RGB")
+        bw = img.convert("L")
+
+        text = row["label"]
+
+        sample = {
+            "rgb.png": self.transform(rgb),
+            "bw.png": self.transform(bw),
+            "json": {
+                "text": text,
+                "writer_id": row.get("writer_id", -1),
+            },
+            "encoded_text": self.alphabet.encode(text),
+        }
+
+        return sample
+
 
 class DataLoaderManager:
     """Handles dataset creation and data loading"""
@@ -197,7 +239,7 @@ class DataLoaderManager:
             pattern = self.eval_pattern
         else:
             raise ValueError(f"Invalid split: {split}")
-        
+         
         shuffle = 100 if split == 'train' else 0
         dataset = (
             wds.WebDataset(pattern,  nodesplitter=wds.split_by_node, shardshuffle=shuffle)
@@ -234,3 +276,82 @@ class DataLoaderManager:
             num_workers=self.num_workers,
             persistent_workers=False
         )
+
+    def create_iam_dataset(
+        self,
+        root: str,
+        label_csv: str,
+        model_type: str,
+    ):
+        def resize_keep_ratio_and_pad(
+            img: Image.Image,
+            target_h: int,
+        ):
+            w, h = img.size
+
+            # resize theo height
+            new_w = int(w * target_h / h)
+            img = img.resize((new_w, target_h), Image.BILINEAR)
+
+            return img
+
+        def iam_transform(img: Image.Image):
+
+            img = resize_keep_ratio_and_pad(
+                img,
+                target_h=64,
+            )
+
+            img = transforms.ToTensor()(img)
+            img = transforms.Normalize([0.5], [0.5])(img)
+
+            return img
+
+
+        if model_type == 'vae' or model_type == 'htr':
+            collate_fn = VAECollate(self.alphabet)
+        elif model_type == 'wid':
+            collate_fn = WIDCollate()
+        elif model_type == 't5':
+            collate_fn = T5Collate(self.tokenizer)
+        else:
+            raise ValueError(f"Invalid model type: {model_type}")
+
+        train_set = IAMWordDataset(
+            root=root,
+            csv_path=label_csv,
+            split="train",
+            alphabet=self.alphabet,
+            transform=iam_transform,
+        )
+
+        val_set = IAMWordDataset(
+            root=root,
+            csv_path=label_csv,
+            split="val",
+            alphabet=self.alphabet,
+            transform=iam_transform,
+        )
+
+        train_loader = DataLoader(
+            train_set,
+            batch_size=self.train_batch_size,
+            shuffle=True,
+            num_workers=self.num_workers,
+            pin_memory=self.pin_memory,
+            collate_fn=collate_fn,
+            drop_last=True,
+            persistent_workers=self.persistent_workers,
+        )
+
+        val_loader = DataLoader(
+            val_set,
+            batch_size=self.eval_batch_size,
+            shuffle=False,
+            num_workers=0,
+            pin_memory=False,
+            collate_fn=collate_fn,
+            drop_last=False,
+        )
+
+        return train_loader, val_loader

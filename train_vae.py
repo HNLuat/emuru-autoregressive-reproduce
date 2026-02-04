@@ -90,9 +90,9 @@ def train():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output_dir", type=str, default='results_vae', help="output directory")
     parser.add_argument("--logging_dir", type=str, default='results_vae', help="logging directory")
-    parser.add_argument("--train_batch_size", type=int, default=16, help="train batch size")
-    parser.add_argument("--eval_batch_size", type=int, default=16, help="eval batch size")
-    parser.add_argument("--epochs", type=int, default=10000, help="number of train epochs")
+    parser.add_argument("--train_batch_size", type=int, default=8, help="train batch size")
+    parser.add_argument("--eval_batch_size", type=int, default=8, help="eval batch size")
+    parser.add_argument("--epochs", type=int, default=100, help="number of train epochs")
     parser.add_argument("--lr", type=float, default=1e-4, help="learning rate")
     parser.add_argument("--seed", type=int, default=24, help="random seed")
    
@@ -102,11 +102,11 @@ def train():
     parser.add_argument("--vae_config", type=str, default='configs/vae/VAE_64x768.json', help='vae config path')
     parser.add_argument("--report_to", type=str, default=None)
     parser.add_argument("--wandb_entity", type=str, default=None)
-    parser.add_argument("--wandb_project_name", type=str, default="emuru_vae", help="wandb project name")
-    parser.add_argument('--wandb_log_interval_steps', type=int, default=25, help="wandb log interval")
+    parser.add_argument("--wandb_project_name", type=str, default="iam-handwriting-emuru", help="wandb project name")
+    parser.add_argument('--wandb_log_interval_steps', type=int, default=5, help="wandb log interval")
 
-    parser.add_argument("--htr_path", type=str, default='pretrained_models/emuru_vae_htr', help='htr checkpoint path')
-    parser.add_argument("--writer_id_path", type=str, default='pretrained_models/emuru_vae_writer_id', help='writerid checkpoint path')
+    parser.add_argument("--htr_path", type=str, default=None, help='htr checkpoint path')
+    parser.add_argument("--writer_id_path", type=str, default=None, help='writerid checkpoint path')
 
     parser.add_argument("--lr_scheduler", type=str, default="reduce_lr_on_plateau")
     parser.add_argument("--lr_scheduler_patience", type=int, default=5)
@@ -144,6 +144,13 @@ def train():
 
     logger.info(accelerator.state)
 
+    wandb.login()
+    wandb.init(
+        project=args.wandb_project_name, 
+        name="train_vae", 
+        config=vars(args)
+    )
+
     if args.seed is not None:
         set_seed(args.seed)
 
@@ -167,18 +174,24 @@ def train():
         betas=(args.adam_beta1, args.adam_beta2),
         weight_decay=args.adam_weight_decay,
         eps=args.adam_epsilon)
-
+ 
     data_loader = DataLoaderManager(
-        train_pattern=("https://huggingface.co/datasets/blowing-up-groundhogs/font-square-v2/resolve/main/tars/train/{000000..000498}.tar"),
-        eval_pattern=("https://huggingface.co/datasets/blowing-up-groundhogs/font-square-v2/resolve/main/tars/train/{000499..000499}.tar"),
+        train_pattern=None,
+        eval_pattern=None,
         train_batch_size=args.train_batch_size,
         eval_batch_size=args.eval_batch_size,
         num_workers=4,
-        pin_memory=False,
-        persistent_workers=False,
+        pin_memory=True,
+        persistent_workers=True,
     )
-    train_loader = data_loader.create_dataset('train', 'vae')
-    eval_loader = data_loader.create_dataset('eval', 'vae')
+    # train_loader = data_loader.create_dataset('train', 'vae')
+    # eval_loader = data_loader.create_dataset('eval', 'vae')
+    dataset_dir = "C:\\Users\\LENOVO\\Documents\\Python Project\\Handwritting_gen\\iam_word_dataset\\preprocessed_style"
+    train_loader, eval_loader = data_loader.create_iam_dataset(
+        root=f"{dataset_dir}\\images",
+        label_csv=f"{dataset_dir}\\labels.csv",
+        model_type="vae",   # hoặc 'vae', 'wid'
+    )
 
     try: 
         NUM_SAMPLES_TRAIN = len(train_loader.dataset)
@@ -355,3 +368,6 @@ def train():
 
 if __name__ == "__main__":
     train()
+
+# prompt:
+# python train_vae.py --output_dir results_vae --logging_dir results_vae --train_batch_size 8 --eval_batch_size 8 --epochs 100 --lr 1e-4 --seed 24 --eval_epochs 1 --vae_config configs/vae/VAE_64x768.json --report_to wandb --wandb_entity your_wandb_entity --wandb_project_name iam-handwriting-emuru --wandb_log_interval_steps 5 --htr_path pretrained_models/emuru_vae_htr --writer_id_path pretrained_models/emuru_vae_writer_id --lr_scheduler reduce_lr_on_plateau --lr_scheduler_patience 5 --use_ema True --gradient_accumulation_steps 1 --mixed_precision bf16 --checkpoints_total_limit 5
