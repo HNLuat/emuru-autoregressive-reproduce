@@ -107,6 +107,7 @@ class T5Collate:
         txts = [sample['json']['text'] for sample in batch]
         res = self.tokenizer(txts, padding=True, return_tensors='pt', return_attention_mask=True, return_length=True)
         res['img'] = DataProcessor.pad_images([sample['rgb.png'] for sample in batch])
+        res['text'] = txts
         return res
 
 
