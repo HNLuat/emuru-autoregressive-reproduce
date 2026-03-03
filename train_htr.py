@@ -107,14 +107,14 @@ def validation(
     })
 
 
-    log_dict = {
-        f"{wandb_prefix}/loss": avg_loss,
-        f"{wandb_prefix}/cer": cer_value,
-        f"{wandb_prefix}/images": images_for_log,
-    }
+    # log_dict = {
+    #     f"{wandb_prefix}/loss": avg_loss,
+    #     f"{wandb_prefix}/cer": cer_value,
+    #     f"{wandb_prefix}/images": images_for_log,
+    # }
 
-    if accelerator.is_main_process:
-        accelerator.log(log_dict)
+    # if accelerator.is_main_process:
+    #     accelerator.log(log_dict)
 
     torch.cuda.empty_cache()
     return cer_value
