@@ -126,7 +126,7 @@ def train():
     parser.add_argument("--wandb_project_name", type=str, default="iam-handwriting-emuru", help="wandb project name")
     parser.add_argument('--wandb_log_interval_steps', type=int, default=25, help="wandb log interval")
 
-    parser.add_argument("--dataset_dir", type=str, default="C:\\Users\\LENOVO\\Documents\\Python Project\\Handwritting_gen\\iam_word_dataset", help="dataset directory")
+    parser.add_argument("--dataset_dir", type=str, default="C:/Users/LENOVO/Documents/Python Project/Handwritting_gen/iam_word_dataset", help="dataset directory")
 
     parser.add_argument("--lr_scheduler", type=str, default="reduce_lr_on_plateau")
     parser.add_argument("--lr_scheduler_patience", type=int, default=5)
@@ -207,7 +207,7 @@ def train():
     dataset_dir = args.dataset_dir
     train_loader, eval_loader = data_loader.create_iam_dataset(
         root=dataset_dir,
-        label_csv=f"{dataset_dir}\\label.csv",
+        label_csv=f"{dataset_dir}/label.csv",
         model_type="htr",   # 'vae', 'htr', 'wid', 't5'
     )
 

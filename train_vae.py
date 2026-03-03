@@ -105,7 +105,7 @@ def train():
     parser.add_argument("--wandb_project_name", type=str, default="iam-handwriting-emuru", help="wandb project name")
     parser.add_argument('--wandb_log_interval_steps', type=int, default=5, help="wandb log interval")
 
-    parser.add_argument("--dataset_dir", type=str, default="C:\\Users\\LENOVO\\Documents\\Python Project\\Handwritting_gen\\iam_word_dataset", help="dataset directory")
+    parser.add_argument("--dataset_dir", type=str, default="C:/Users/LENOVO/Documents/Python Project/Handwritting_gen/iam_word_dataset", help="dataset directory")
 
     parser.add_argument("--htr_path", type=str, default=None, help='htr checkpoint path')
     parser.add_argument("--writer_id_path", type=str, default=None, help='writerid checkpoint path')
@@ -183,8 +183,8 @@ def train():
     # eval_loader = data_loader.create_dataset('eval', 'vae')
     dataset_dir = args.dataset_dir
     train_loader, eval_loader = data_loader.create_iam_dataset(
-        root=f"{dataset_dir}\\images",
-        label_csv=f"{dataset_dir}\\label.csv",
+        root=dataset_dir,
+        label_csv=f"{dataset_dir}/label.csv",
         model_type="vae",   # hoặc 'vae', 'wid'
     )
 
