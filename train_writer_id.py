@@ -30,7 +30,6 @@ def validation(
     loss_fn,
     accuracy_fn,
     len_eval_loader,
-    optimizer=None,
     wandb_prefix="eval"
 ):
     writer_id_model = accelerator.unwrap_model(writer_id)
@@ -55,25 +54,26 @@ def validation(
 
         eval_loss += loss.item()
 
-        # if step == 0:
-        #     img = images[0].detach().cpu()
+        if step == 0:
+            img = images[0].detach().cpu()
 
-        #     if img.min() < 0:
-        #         img = (img + 1) / 2
+            if img.min() < 0:
+                img = (img + 1) / 2
 
-        #     img = img.clamp(0,1)
-        #     images_for_log.append(
-        #         wandb.Image(
-        #             to_pil_image(img),
-        #             caption=f"GT: {authors_id[0].item()} | Pred: {predicted_authors[0].item()}"
-        #         )
-        #     )
+            img = img.clamp(0,1)
+            images_for_log.append(
+                wandb.Image(
+                    to_pil_image(img),
+                    caption=f"GT: {authors_id[0].item()} | Pred: {predicted_authors[0].item()}"
+                )
+            )
 
     accuracy_value = accuracy_fn.compute()['accuracy']
     avg_loss = eval_loss / len_eval_loader
     wandb.log({
         f"{wandb_prefix}/loss": avg_loss,
         f"{wandb_prefix}/accuracy": accuracy_value,
+        f"{wandb_prefix}/images": images_for_log,
     })
 
     log_dict = {
@@ -81,10 +81,6 @@ def validation(
         f"{wandb_prefix}/accuracy": accuracy_value,
         # f"{wandb_prefix}/images": images_for_log,
     }
-
-    # log learning rate nếu có optimizer
-    if optimizer is not None:
-        log_dict[f"{wandb_prefix}/lr"] = optimizer.param_groups[0]["lr"]
 
     if accelerator.is_main_process:
         accelerator.log(log_dict)
@@ -97,8 +93,8 @@ def train():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output_dir", type=str, default='results_wid', help="output directory")
     parser.add_argument("--logging_dir", type=str, default='results_wid', help="logging directory")
-    parser.add_argument("--train_batch_size", type=int, default=16, help="train batch size")
-    parser.add_argument("--eval_batch_size", type=int, default=16, help="eval batch size")
+    parser.add_argument("--train_batch_size", type=int, default=64, help="train batch size")
+    parser.add_argument("--eval_batch_size", type=int, default=64, help="eval batch size")
     parser.add_argument("--epochs", type=int, default=100, help="number of train epochs")
     parser.add_argument("--lr", type=float, default=1e-4, help="learning rate")
     parser.add_argument("--seed", type=int, default=24, help="random seed")
@@ -258,7 +254,6 @@ def train():
     progress_bar.set_description("Steps")
 
     for epoch in range(train_state.epoch, args.epochs):
-
         writer_id.train()
         train_loss, train_accuracy = 0., 0.
 

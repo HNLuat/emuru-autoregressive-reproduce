@@ -34,7 +34,6 @@ def validation(
     loss_fn,
     cer_fn,
     len_eval_loader,
-    optimizer=None,
     wandb_prefix="eval"
 ):
     htr_model = accelerator.unwrap_model(htr)
@@ -78,25 +77,25 @@ def validation(
                 references=correct_characters
             )
 
-        # # log vài sample đầu
-        # if step < 3:
-        #     img = images[0].detach().cpu()
+        # log vài sample đầu
+        if step < 3:
+            img = images[0].detach().cpu()
 
-        #     if img.min() < 0:
-        #         img = (img + 1) / 2
+            if img.min() < 0:
+                img = (img + 1) / 2
 
-        #     img = img.clamp(0,1)
+            img = img.clamp(0,1)
 
-        #     images_for_log.append(
-        #         wandb.Image(
-        #             to_pil_image(img),
-        #             caption=f"GT: {correct_characters[0]} | Pred: {predicted_characters[0]}"
-        #         )
-        #     )
+            images_for_log.append(
+                wandb.Image(
+                    to_pil_image(img),
+                    caption=f"GT: {correct_characters[0]} | Pred: {predicted_characters[0]}"
+                )
+            )
 
-        #     text_samples.append(
-        #         f"GT: {correct_characters[0]} | Pred: {predicted_characters[0]}"
-        #     )
+            text_samples.append(
+                f"GT: {correct_characters[0]} | Pred: {predicted_characters[0]}"
+            )
 
     cer_value = cer_fn.compute()
     avg_loss = eval_loss / len_eval_loader
@@ -104,6 +103,7 @@ def validation(
     wandb.log({
         f"{wandb_prefix}/loss": avg_loss,
         f"{wandb_prefix}/cer": cer_value,
+        f"{wandb_prefix}/images": images_for_log,
     })
 
 
@@ -112,9 +112,6 @@ def validation(
         f"{wandb_prefix}/cer": cer_value,
         f"{wandb_prefix}/images": images_for_log,
     }
-
-    if optimizer is not None:
-        log_dict[f"{wandb_prefix}/lr"] = optimizer.param_groups[0]["lr"]
 
     if accelerator.is_main_process:
         accelerator.log(log_dict)
@@ -126,8 +123,8 @@ def train():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output_dir", type=str, default='results_htr', help="output directory")
     parser.add_argument("--logging_dir", type=str, default='results_htr', help="logging directory")
-    parser.add_argument("--train_batch_size", type=int, default=16, help="train batch size")
-    parser.add_argument("--eval_batch_size", type=int, default=16, help="eval batch size")
+    parser.add_argument("--train_batch_size", type=int, default=32, help="train batch size")
+    parser.add_argument("--eval_batch_size", type=int, default=32, help="eval batch size")
     parser.add_argument("--epochs", type=int, default=100, help="number of train epochs")
     parser.add_argument("--lr", type=float, default=1e-4, help="learning rate")
     parser.add_argument("--seed", type=int, default=24, help="random seed")
