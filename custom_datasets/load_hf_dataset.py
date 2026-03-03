@@ -347,7 +347,7 @@ class DataLoaderManager:
             val_set,
             batch_size=self.eval_batch_size,
             shuffle=False,
-            num_workers=0,
+            num_workers=4,
             pin_memory=False,
             collate_fn=collate_fn,
             drop_last=False,
