@@ -185,7 +185,7 @@ class IAMWordDataset(Dataset):
         rgb = img.convert("RGB")
         bw = img.convert("L")
 
-        text = row["label"]
+        text = str(row["label"])
 
         sample = {
             "rgb.png": self.transform(rgb),
