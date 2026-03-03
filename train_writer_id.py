@@ -14,6 +14,7 @@ from accelerate.utils import broadcast
 from accelerate.utils import ProjectConfiguration, set_seed
 from transformers.optimization import get_scheduler
 import evaluate
+from torchvision.transforms.functional import to_pil_image
 
 from utils import TrainState
 from models.writer_id import WriterID, WriterIDConfig
@@ -55,9 +56,15 @@ def validation(
         eval_loss += loss.item()
 
         if step == 0:
+            img = images[0].detach().cpu()
+
+            if img.min() < 0:
+                img = (img + 1) / 2
+
+            img = img.clamp(0,1)
             images_for_log.append(
                 wandb.Image(
-                    images[0].cpu(),
+                    to_pil_image(img),
                     caption=f"GT: {authors_id[0].item()} | Pred: {predicted_authors[0].item()}"
                 )
             )
