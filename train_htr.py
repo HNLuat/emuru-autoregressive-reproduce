@@ -23,11 +23,24 @@ from models.smooth_ce import SmoothCrossEntropyLoss
 
 
 @torch.no_grad()
-def validation(eval_loader, alphabet, htr, accelerator, weight_dtype, loss_fn, cer_fn, len_eval_loader, wandb_prefix="eval"):
+def validation(
+    eval_loader,
+    alphabet,
+    htr,
+    accelerator,
+    weight_dtype,
+    loss_fn,
+    cer_fn,
+    len_eval_loader,
+    optimizer=None,
+    wandb_prefix="eval"
+):
     htr_model = accelerator.unwrap_model(htr)
     htr_model.eval()
+
     eval_loss = 0.
     images_for_log = []
+    text_samples = []
 
     for step, batch in enumerate(eval_loader):
         with accelerator.autocast():
@@ -36,40 +49,71 @@ def validation(eval_loader, alphabet, htr, accelerator, weight_dtype, loss_fn, c
             tgt_mask = batch['tgt_key_mask']
             tgt_key_padding_mask = batch['tgt_key_padding_mask']
 
-            output = htr_model(images, text_logits_s2s[:, :-1], tgt_mask, tgt_key_padding_mask[:, :-1])
+            output = htr_model(
+                images,
+                text_logits_s2s[:, :-1],
+                tgt_mask,
+                tgt_key_padding_mask[:, :-1]
+            )
+
             loss = loss_fn(output, text_logits_s2s[:, 1:])
-
-            predicted_logits = torch.argmax(output, dim=2)
-            predicted_characters = alphabet.decode(predicted_logits, [alphabet.eos])
-            correct_characters = alphabet.decode(text_logits_s2s[:, 1:], [alphabet.eos])
-
-            cer_fn.add_batch(predictions=predicted_characters, references=correct_characters)
             eval_loss += loss.item()
 
-            if step < 4:
-                images_for_log.append(wandb.Image(images[0], caption=predicted_characters[0]))
+            predicted_logits = torch.argmax(output, dim=2)
+
+            predicted_characters = alphabet.decode(
+                predicted_logits,
+                [alphabet.eos]
+            )
+
+            correct_characters = alphabet.decode(
+                text_logits_s2s[:, 1:],
+                [alphabet.eos]
+            )
+
+            cer_fn.add_batch(
+                predictions=predicted_characters,
+                references=correct_characters
+            )
+
+        # log vài sample đầu
+        if step < 3:
+            images_for_log.append(
+                wandb.Image(
+                    images[0].cpu(),
+                    caption=f"GT: {correct_characters[0]} | Pred: {predicted_characters[0]}"
+                )
+            )
+
+            text_samples.append(
+                f"GT: {correct_characters[0]} | Pred: {predicted_characters[0]}"
+            )
 
     cer_value = cer_fn.compute()
+    avg_loss = eval_loss / len_eval_loader
 
-    accelerator.log({
-        f"{wandb_prefix}/loss": eval_loss / len_eval_loader,
+    log_dict = {
+        f"{wandb_prefix}/loss": avg_loss,
         f"{wandb_prefix}/cer": cer_value,
         f"{wandb_prefix}/images": images_for_log,
-    })
+    }
 
-    del htr_model
-    del images_for_log
+    if optimizer is not None:
+        log_dict[f"{wandb_prefix}/lr"] = optimizer.param_groups[0]["lr"]
+
+    if accelerator.is_main_process:
+        accelerator.log(log_dict)
+
     torch.cuda.empty_cache()
     return cer_value
-
 
 def train():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output_dir", type=str, default='results_htr', help="output directory")
     parser.add_argument("--logging_dir", type=str, default='results_htr', help="logging directory")
-    parser.add_argument("--train_batch_size", type=int, default=128, help="train batch size")
-    parser.add_argument("--eval_batch_size", type=int, default=128, help="eval batch size")
-    parser.add_argument("--epochs", type=int, default=10000, help="number of train epochs")
+    parser.add_argument("--train_batch_size", type=int, default=8, help="train batch size")
+    parser.add_argument("--eval_batch_size", type=int, default=8, help="eval batch size")
+    parser.add_argument("--epochs", type=int, default=100, help="number of train epochs")
     parser.add_argument("--lr", type=float, default=1e-4, help="learning rate")
     parser.add_argument("--seed", type=int, default=24, help="random seed")
    
@@ -79,8 +123,10 @@ def train():
     parser.add_argument("--htr_config", type=str, default='configs/htr/HTR_64x768.json', help='config path')
     parser.add_argument("--report_to", type=str, default=None)
     parser.add_argument("--wandb_entity", type=str, default=None)
-    parser.add_argument("--wandb_project_name", type=str, default="emuru_htr", help="wandb project name")
+    parser.add_argument("--wandb_project_name", type=str, default="iam-handwriting-emuru", help="wandb project name")
     parser.add_argument('--wandb_log_interval_steps', type=int, default=25, help="wandb log interval")
+
+    parser.add_argument("--dataset_dir", type=str, default="C:\\Users\\LENOVO\\Documents\\Python Project\\Handwritting_gen\\iam_word_dataset", help="dataset directory")
 
     parser.add_argument("--lr_scheduler", type=str, default="reduce_lr_on_plateau")
     parser.add_argument("--lr_scheduler_patience", type=int, default=5)
@@ -145,16 +191,25 @@ def train():
         eps=args.adam_epsilon)
 
     data_loader = DataLoaderManager(
-        train_pattern=("https://huggingface.co/datasets/blowing-up-groundhogs/font-square-v2/resolve/main/tars/train/{000000..000498}.tar"),
-        eval_pattern=("https://huggingface.co/datasets/blowing-up-groundhogs/font-square-v2/resolve/main/tars/train/{000499..000499}.tar"),
+        # train_pattern=("https://huggingface.co/datasets/blowing-up-groundhogs/font-square-v2/resolve/main/tars/train/{000000..000498}.tar"),
+        # eval_pattern=("https://huggingface.co/datasets/blowing-up-groundhogs/font-square-v2/resolve/main/tars/train/{000499..000499}.tar"),
+        train_pattern=None,
+        eval_pattern=None,
         train_batch_size=args.train_batch_size,
         eval_batch_size=args.eval_batch_size,
         num_workers=4,
         pin_memory=False,
         persistent_workers=False,
     )
-    train_loader = data_loader.create_dataset('train', 'htr')
-    eval_loader = data_loader.create_dataset('eval', 'htr')
+
+    # train_loader = data_loader.create_dataset('train', 'htr')
+    # eval_loader = data_loader.create_dataset('eval', 'htr')
+    dataset_dir = args.dataset_dir
+    train_loader, eval_loader = data_loader.create_iam_dataset(
+        root=dataset_dir,
+        label_csv=f"{dataset_dir}\\label.csv",
+        model_type="htr",   # 'vae', 'htr', 'wid', 't5'
+    )
 
     try: 
         NUM_SAMPLES_TRAIN = len(train_loader.dataset)
@@ -206,6 +261,13 @@ def train():
     smooth_ce_loss = SmoothCrossEntropyLoss(tgt_pad_idx=0)
     cer = evaluate.load('cer')
     noisy_teacher = NoisyTeacherForcing(htr.config.alphabet_size, num_extra_tokens=3, noise_prob=0.1)
+
+    wandb.login()
+    wandb.init(
+        project=args.wandb_project_name, 
+        name="train_htr", 
+        config=vars(args)
+    )
 
     progress_bar = tqdm(range(train_state.global_step, args.max_train_steps), disable=not accelerator.is_local_main_process)
     progress_bar.set_description("Steps")

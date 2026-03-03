@@ -105,6 +105,8 @@ def train():
     parser.add_argument("--wandb_project_name", type=str, default="iam-handwriting-emuru", help="wandb project name")
     parser.add_argument('--wandb_log_interval_steps', type=int, default=5, help="wandb log interval")
 
+    parser.add_argument("--dataset_dir", type=str, default="C:\\Users\\LENOVO\\Documents\\Python Project\\Handwritting_gen\\iam_word_dataset", help="dataset directory")
+
     parser.add_argument("--htr_path", type=str, default=None, help='htr checkpoint path')
     parser.add_argument("--writer_id_path", type=str, default=None, help='writerid checkpoint path')
 
@@ -144,13 +146,6 @@ def train():
 
     logger.info(accelerator.state)
 
-    wandb.login()
-    wandb.init(
-        project=args.wandb_project_name, 
-        name="train_vae", 
-        config=vars(args)
-    )
-
     if args.seed is not None:
         set_seed(args.seed)
 
@@ -186,10 +181,10 @@ def train():
     )
     # train_loader = data_loader.create_dataset('train', 'vae')
     # eval_loader = data_loader.create_dataset('eval', 'vae')
-    dataset_dir = "C:\\Users\\LENOVO\\Documents\\Python Project\\Handwritting_gen\\iam_word_dataset\\preprocessed_style"
+    dataset_dir = args.dataset_dir
     train_loader, eval_loader = data_loader.create_iam_dataset(
         root=f"{dataset_dir}\\images",
-        label_csv=f"{dataset_dir}\\labels.csv",
+        label_csv=f"{dataset_dir}\\label.csv",
         model_type="vae",   # hoặc 'vae', 'wid'
     )
 
@@ -254,6 +249,14 @@ def train():
             logger.info(f"  Resuming from checkpoint at epoch {train_state.epoch}")
         except FileNotFoundError as e:
             logger.warning(f"  Checkpoint not found: {e}. Creating a new run")
+
+
+    wandb.login()
+    wandb.init(
+        project=args.wandb_project_name, 
+        name="train_vae", 
+        config=vars(args)
+    )
 
     progress_bar = tqdm(range(train_state.global_step, args.max_train_steps), disable=not accelerator.is_local_main_process)
     progress_bar.set_description("Steps")

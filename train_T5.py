@@ -19,25 +19,92 @@ from custom_datasets import DataLoaderManager
 from models.emuru import Emuru, EmuruConfig
 
 
-@torch.no_grad()
-def validation(eval_loader, model, accelerator, weight_dtype, len_eval_loader, wandb_prefix="eval"):
+def validation(
+    eval_loader,
+    model,
+    accelerator,
+    weight_dtype,
+    len_eval_loader,
+    wandb_prefix="eval",
+    log_n_images=5
+):
     model = accelerator.unwrap_model(model)
     model.eval()
-    eval_loss = 0.
 
-    for _, batch in enumerate(eval_loader):
-        with accelerator.autocast():
-            images = batch['img'].to(weight_dtype)
-            input_ids = batch['input_ids'].long()
+    eval_loss = 0.0
+    logged = False
 
-            loss, _, _ = model(images, input_ids=input_ids, attention_mask=batch['attention_mask'])
-            eval_loss += loss.item()
+    for step, batch in enumerate(eval_loader):
+        with torch.no_grad():
+            with accelerator.autocast():
+                images = batch['img'].to(weight_dtype)
+                input_ids = batch['input_ids'].long()
 
-    accelerator.log({f"{wandb_prefix}/loss": eval_loss / len_eval_loader,})
+                loss, _, _ = model(
+                    images,
+                    input_ids=input_ids,
+                    attention_mask=batch['attention_mask']
+                )
+
+        eval_loss += loss.item()
+
+        # ===== LOG 5 IMAGES (only once) =====
+        if (not logged) and accelerator.is_main_process:
+            log_images = []
+
+            B = images.size(0)
+            n = min(log_n_images, B)
+
+            log_images = []
+
+            for i in range(n):
+                try:
+                    gen_img = model.generate(
+                        style_text="",
+                        gen_text=batch['text'][i],
+                        style_img=images[i]
+                    )
+            
+                    w, h = gen_img.size
+                    if w < 5 or h < 5:
+                        raise ValueError(f"Empty image {gen_img.size}")
+                    # plt.imshow(gen_img)
+                    # plt.axis("off")
+                    # plt.show()
+            
+                    log_images.append(
+                        wandb.Image(
+                            gen_img,
+                            caption=batch['text'][i]
+                        )
+                    )
+            
+                except Exception as e:
+                    print(f"[WARN] generate failed at idx {i}: {e}")
+            
+            wandb.log({
+                "eval/samples": log_images
+            })
+
+            accelerator.log({
+                f"{wandb_prefix}/samples": log_images
+            })
+
+            logged = True
+
+    avg_loss = eval_loss / len_eval_loader
+
+    accelerator.log({
+        f"{wandb_prefix}/loss": avg_loss
+    })
+    wandb.log({
+        "eval/loss: ": avg_loss
+    })
 
     del model
     torch.cuda.empty_cache()
-    return eval_loss / len_eval_loader
+
+    return avg_loss
 
 
 @torch.no_grad()
@@ -101,13 +168,15 @@ def train():
     parser.add_argument("--report_to", type=str, default=None)
     parser.add_argument("--wandb_entity", type=str, default=None)
     parser.add_argument("--wandb_project_name", type=str, default="iam-handwriting-emuru", help="wandb project name")
-    parser.add_argument('--wandb_log_interval_steps', type=int, default=5, help="wandb log interval")
+    parser.add_argument('--wandb_log_interval_steps', type=int, default=100, help="wandb log interval")
+
+    parser.add_argument("--dataset_dir", type=str, default="C:\\Users\\LENOVO\\Documents\\Python Project\\Handwritting_gen\\iam_word_dataset", help="dataset directory")
 
     parser.add_argument("--vae_path", type=str, default="blowing-up-groundhogs/emuru_vae", help='vae checkpoint path')
 
     parser.add_argument("--gradient_accumulation_steps", type=int, default=1)
     parser.add_argument("--mixed_precision", type=str, default="no")
-    parser.add_argument("--checkpoints_total_limit", type=int, default=5)
+    parser.add_argument("--checkpoints_total_limit", type=int, default=2)
 
     parser.add_argument('--teacher_noise', type=float, default=0.1, help='How much noise add during training')
     parser.add_argument('--training_type', type=str, default='pretrain', help='Pre-training or long lines finetune', choices=['pretrain', 'finetune'])
@@ -195,10 +264,10 @@ def train():
     # train_loader = data_loader.create_dataset('train', 't5')
     # eval_loader = data_loader.create_dataset('eval', 't5')
     karaoke_loader = data_loader.create_karaoke_dataset()
-    dataset_dir = "C:\\Users\\LENOVO\\Documents\\Python Project\\Handwritting_gen\\iam_word_dataset\\preprocessed_style"
+    dataset_dir = args.dataset_dir
     train_loader, eval_loader = data_loader.create_iam_dataset(
-        root=f"{dataset_dir}\\images",
-        label_csv=f"{dataset_dir}\\labels.csv",
+        root=dataset_dir,
+        label_csv=f"{dataset_dir}\\label.csv",
         model_type="t5",   # hoặc 'vae', 'wid'
     )
     NUM_SAMPLES_TRAIN = len(train_loader.dataset)
@@ -280,6 +349,12 @@ def train():
                 optimizer.step()
                 optimizer.zero_grad()
 
+            if train_state.global_step % args.wandb_log_interval_steps == 0:
+                wandb.log({
+                    "train/loss": train_loss,
+                    "step": train_state.global_step
+                })
+
             logs = {}
             if accelerator.sync_gradients:
                 progress_bar.update(1)
@@ -300,10 +375,20 @@ def train():
 
         if epoch % args.eval_epochs == 0 and accelerator.is_main_process:
             with torch.no_grad():
-                eval_loss = validation(eval_loader, model, accelerator, weight_dtype, LEN_EVAL_LOADER, 'eval')
+                # eval_loss = validation(eval_loader, model, accelerator, weight_dtype, LEN_EVAL_LOADER, 'eval')
+                eval_loss = validation(
+                    eval_loader,
+                    model,
+                    accelerator,
+                    weight_dtype,
+                    LEN_EVAL_LOADER,
+                    wandb_prefix="eval",
+                    log_n_images=5
+                )
                 eval_loss = broadcast(torch.tensor(eval_loss, device=accelerator.device), from_process=0)
-
+                
                 if eval_loss < train_state.best_eval:
+
                     train_state.best_eval = eval_loss
                     model_to_save = accelerator.unwrap_model(model)
                     model_to_save.save_pretrained(args.output_dir / f"model_{epoch:04d}")
@@ -314,6 +399,7 @@ def train():
 
                 test_loss = karaoke_test(karaoke_loader, model, accelerator, weight_dtype, 'test')
                 logger.info(f"Epoch {epoch} - Test loss: {test_loss}")
+                
                 accelerator.save_state()
 
             lr_scheduler.step(eval_loss)

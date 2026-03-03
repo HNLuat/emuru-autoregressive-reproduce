@@ -179,7 +179,7 @@ class IAMWordDataset(Dataset):
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
 
-        img_path = os.path.join(self.root, row["image"])
+        img_path = os.path.join(self.root, row["image_path"])
         img = Image.open(img_path)
 
         rgb = img.convert("RGB")
@@ -199,6 +199,29 @@ class IAMWordDataset(Dataset):
 
         return sample
 
+def resize_keep_ratio_and_pad(
+    img: Image.Image,
+    target_h: int,
+):
+    w, h = img.size
+
+    # resize theo height
+    new_w = int(w * target_h / h)
+    img = img.resize((new_w, target_h), Image.BILINEAR)
+
+    return img
+
+def iam_transform(img: Image.Image):
+
+    img = resize_keep_ratio_and_pad(
+        img,
+        target_h=64,
+    )
+
+    img = transforms.ToTensor()(img)
+    img = transforms.Normalize([0.5], [0.5])(img)
+
+    return img
 
 class DataLoaderManager:
     """Handles dataset creation and data loading"""
@@ -284,31 +307,6 @@ class DataLoaderManager:
         label_csv: str,
         model_type: str,
     ):
-        def resize_keep_ratio_and_pad(
-            img: Image.Image,
-            target_h: int,
-        ):
-            w, h = img.size
-
-            # resize theo height
-            new_w = int(w * target_h / h)
-            img = img.resize((new_w, target_h), Image.BILINEAR)
-
-            return img
-
-        def iam_transform(img: Image.Image):
-
-            img = resize_keep_ratio_and_pad(
-                img,
-                target_h=64,
-            )
-
-            img = transforms.ToTensor()(img)
-            img = transforms.Normalize([0.5], [0.5])(img)
-
-            return img
-
-
         if model_type == 'vae' or model_type == 'htr':
             collate_fn = VAECollate(self.alphabet)
         elif model_type == 'wid':
