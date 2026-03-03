@@ -90,8 +90,8 @@ def train():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output_dir", type=str, default='results_vae', help="output directory")
     parser.add_argument("--logging_dir", type=str, default='results_vae', help="logging directory")
-    parser.add_argument("--train_batch_size", type=int, default=8, help="train batch size")
-    parser.add_argument("--eval_batch_size", type=int, default=8, help="eval batch size")
+    parser.add_argument("--train_batch_size", type=int, default=16, help="train batch size")
+    parser.add_argument("--eval_batch_size", type=int, default=16, help="eval batch size")
     parser.add_argument("--epochs", type=int, default=100, help="number of train epochs")
     parser.add_argument("--lr", type=float, default=1e-4, help="learning rate")
     parser.add_argument("--seed", type=int, default=24, help="random seed")
@@ -103,7 +103,7 @@ def train():
     parser.add_argument("--report_to", type=str, default=None)
     parser.add_argument("--wandb_entity", type=str, default=None)
     parser.add_argument("--wandb_project_name", type=str, default="iam-handwriting-emuru", help="wandb project name")
-    parser.add_argument('--wandb_log_interval_steps', type=int, default=5, help="wandb log interval")
+    parser.add_argument('--wandb_log_interval_steps', type=int, default=200, help="wandb log interval")
 
     parser.add_argument("--dataset_dir", type=str, default="C:/Users/LENOVO/Documents/Python Project/Handwritting_gen/iam_word_dataset", help="dataset directory")
 
@@ -115,7 +115,7 @@ def train():
     parser.add_argument("--use_ema", type=str, default="False")
     parser.add_argument("--gradient_accumulation_steps", type=int, default=1)
     parser.add_argument("--mixed_precision", type=str, default="no")
-    parser.add_argument("--checkpoints_total_limit", type=int, default=5)
+    parser.add_argument("--checkpoints_total_limit", type=int, default=2)
 
     args = parser.parse_args()
 
