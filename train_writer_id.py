@@ -53,6 +53,7 @@ def validation(
         )
 
         eval_loss += loss.item()
+        print(f"Eval step {step+1}/{len_eval_loader} - Loss: {loss.item():.4f}")
 
         if step == 0:
             img = images[0].detach().cpu()
@@ -70,22 +71,24 @@ def validation(
 
     accuracy_value = accuracy_fn.compute()['accuracy']
     avg_loss = eval_loss / len_eval_loader
+    print(f"Eval - Average Loss: {avg_loss:.4f}, Accuracy: {accuracy_value:.4f}")
     wandb.log({
         f"{wandb_prefix}/loss": avg_loss,
         f"{wandb_prefix}/accuracy": accuracy_value,
         f"{wandb_prefix}/images": images_for_log,
     })
 
-    log_dict = {
-        f"{wandb_prefix}/loss": avg_loss,
-        f"{wandb_prefix}/accuracy": accuracy_value,
-        # f"{wandb_prefix}/images": images_for_log,
-    }
+    # log_dict = {
+    #     f"{wandb_prefix}/loss": avg_loss,
+    #     f"{wandb_prefix}/accuracy": accuracy_value,
+    #     f"{wandb_prefix}/images": images_for_log,
+    # }
 
-    if accelerator.is_main_process:
-        accelerator.log(log_dict)
+    # if accelerator.is_main_process:
+    #     accelerator.log(log_dict)
 
     torch.cuda.empty_cache()
+    print("Finished evaluation, starting next epoch...")
     return accuracy_value
 
 
