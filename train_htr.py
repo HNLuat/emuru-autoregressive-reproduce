@@ -78,28 +78,34 @@ def validation(
                 references=correct_characters
             )
 
-        # log vài sample đầu
-        if step < 3:
-            img = images[0].detach().cpu()
+        # # log vài sample đầu
+        # if step < 3:
+        #     img = images[0].detach().cpu()
 
-            if img.min() < 0:
-                img = (img + 1) / 2
+        #     if img.min() < 0:
+        #         img = (img + 1) / 2
 
-            img = img.clamp(0,1)
+        #     img = img.clamp(0,1)
 
-            images_for_log.append(
-                wandb.Image(
-                    to_pil_image(img),
-                    caption=f"GT: {correct_characters[0]} | Pred: {predicted_characters[0]}"
-                )
-            )
+        #     images_for_log.append(
+        #         wandb.Image(
+        #             to_pil_image(img),
+        #             caption=f"GT: {correct_characters[0]} | Pred: {predicted_characters[0]}"
+        #         )
+        #     )
 
-            text_samples.append(
-                f"GT: {correct_characters[0]} | Pred: {predicted_characters[0]}"
-            )
+        #     text_samples.append(
+        #         f"GT: {correct_characters[0]} | Pred: {predicted_characters[0]}"
+        #     )
 
     cer_value = cer_fn.compute()
     avg_loss = eval_loss / len_eval_loader
+
+    wandb.log({
+        f"{wandb_prefix}/loss": avg_loss,
+        f"{wandb_prefix}/cer": cer_value,
+    })
+
 
     log_dict = {
         f"{wandb_prefix}/loss": avg_loss,

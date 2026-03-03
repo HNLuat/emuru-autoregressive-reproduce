@@ -55,27 +55,31 @@ def validation(
 
         eval_loss += loss.item()
 
-        if step == 0:
-            img = images[0].detach().cpu()
+        # if step == 0:
+        #     img = images[0].detach().cpu()
 
-            if img.min() < 0:
-                img = (img + 1) / 2
+        #     if img.min() < 0:
+        #         img = (img + 1) / 2
 
-            img = img.clamp(0,1)
-            images_for_log.append(
-                wandb.Image(
-                    to_pil_image(img),
-                    caption=f"GT: {authors_id[0].item()} | Pred: {predicted_authors[0].item()}"
-                )
-            )
+        #     img = img.clamp(0,1)
+        #     images_for_log.append(
+        #         wandb.Image(
+        #             to_pil_image(img),
+        #             caption=f"GT: {authors_id[0].item()} | Pred: {predicted_authors[0].item()}"
+        #         )
+        #     )
 
     accuracy_value = accuracy_fn.compute()['accuracy']
     avg_loss = eval_loss / len_eval_loader
+    wandb.log({
+        f"{wandb_prefix}/loss": avg_loss,
+        f"{wandb_prefix}/accuracy": accuracy_value,
+    })
 
     log_dict = {
         f"{wandb_prefix}/loss": avg_loss,
         f"{wandb_prefix}/accuracy": accuracy_value,
-        f"{wandb_prefix}/images": images_for_log,
+        # f"{wandb_prefix}/images": images_for_log,
     }
 
     # log learning rate nếu có optimizer
