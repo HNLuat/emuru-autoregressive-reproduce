@@ -34,17 +34,19 @@ def validation(
 ):
     writer_id_model = accelerator.unwrap_model(writer_id)
     writer_id_model.eval()
+    print("Starting evaluation...")
 
     eval_loss = 0.
     images_for_log = []
 
     for step, batch in enumerate(eval_loader):
+        print(f"Eval step {step+1}/{len_eval_loader}")
         images = batch['bw'].to(weight_dtype)
         authors_id = batch['writer_id']
 
         output = writer_id_model(images)
         loss = loss_fn(output, authors_id)
-
+        print(f"1 Eval step {step+1}/{len_eval_loader} - Loss: {loss.item():.4f}")
         predicted_authors = torch.argmax(output, dim=1)
 
         accuracy_fn.add_batch(
@@ -53,7 +55,7 @@ def validation(
         )
 
         eval_loss += loss.item()
-        print(f"Eval step {step+1}/{len_eval_loader} - Loss: {loss.item():.4f}")
+        print(f"2 Eval step {step+1}/{len_eval_loader} - Accuracy: {accuracy_value:.4f}")
 
         if step == 0:
             img = images[0].detach().cpu()
@@ -68,6 +70,7 @@ def validation(
                     caption=f"GT: {authors_id[0].item()} | Pred: {predicted_authors[0].item()}"
                 )
             )
+        print(f"Finished eval step {step+1}/{len_eval_loader}")
 
     accuracy_value = accuracy_fn.compute()['accuracy']
     avg_loss = eval_loss / len_eval_loader
@@ -257,6 +260,33 @@ def train():
     progress_bar.set_description("Steps")
 
     for epoch in range(train_state.epoch, args.epochs):
+
+        
+            if accelerator.is_main_process:
+                with torch.no_grad():
+                    eval_accuracy = validation(eval_loader, writer_id, accelerator, weight_dtype, ce_loss, accuracy, LEN_EVAL_LOADER, 'eval')
+                    eval_accuracy = broadcast(torch.tensor(eval_accuracy, device=accelerator.device), from_process=0)
+
+                    if args.use_ema:
+                        ema_writer_id.store(writer_id.parameters())
+                        ema_writer_id.copy_to(writer_id.parameters())
+                        _ = validation(eval_loader, writer_id, accelerator, weight_dtype, ce_loss, accuracy, LEN_EVAL_LOADER, 'ema')
+                        ema_writer_id.restore(writer_id.parameters())
+
+                    if eval_accuracy > train_state.best_eval:
+                        train_state.best_eval = eval_accuracy
+                        writer_id_to_save = accelerator.unwrap_model(writer_id)
+                        writer_id_to_save.save_pretrained(args.output_dir / f"model_{epoch:04d}")
+                        del writer_id_to_save
+                        logger.info(f"Epoch {epoch} - Best eval accuracy: {eval_accuracy}")
+                
+                train_state.last_eval = eval_accuracy
+                accelerator.save_state()
+
+            accelerator.wait_for_everyone()
+            lr_scheduler.step(train_state.last_eval)
+
+
         writer_id.train()
         train_loss, train_accuracy = 0., 0.
 
