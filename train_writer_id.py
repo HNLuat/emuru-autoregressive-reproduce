@@ -55,7 +55,7 @@ def validation(
         )
 
         eval_loss += loss.item()
-        print(f"2 Eval step {step+1}/{len_eval_loader} - Accuracy: {accuracy_value:.4f}")
+        print(f"2 Eval step {step+1}/{len_eval_loader} - Loss: {loss.item():.4f}")
 
         if step == 0:
             img = images[0].detach().cpu()
@@ -262,6 +262,7 @@ def train():
     for epoch in range(train_state.epoch, args.epochs):
 
         
+        if epoch % args.eval_epochs == 0:
             if accelerator.is_main_process:
                 with torch.no_grad():
                     eval_accuracy = validation(eval_loader, writer_id, accelerator, weight_dtype, ce_loss, accuracy, LEN_EVAL_LOADER, 'eval')
