@@ -83,7 +83,7 @@ def validation(
                     print(f"[WARN] generate failed at idx {i}: {e}")
             
             wandb.log({
-                "eval/samples": log_images
+                f"{wandb_prefix}/samples": log_images
             })
 
             accelerator.log({
@@ -98,7 +98,7 @@ def validation(
         f"{wandb_prefix}/loss": avg_loss
     })
     wandb.log({
-        "eval/loss: ": avg_loss
+        f"{wandb_prefix}/loss": avg_loss
     })
 
     del model

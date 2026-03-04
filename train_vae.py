@@ -2,6 +2,8 @@ import argparse
 from pathlib import Path
 import math
 import uuid
+import os
+import shutil
 
 import wandb
 from tqdm import tqdm
@@ -73,6 +75,12 @@ def validation(eval_loader, vae, accelerator, loss_fn, weight_dtype, htr, writer
             if step == 0:
                 images_for_log.append(torch.cat([images, pred], dim=-1)[:8])         
 
+    wandb.log({
+        f"{wandb_prefix}/samples": images_for_log_w_htr_wid,
+        f"{wandb_prefix}/loss": eval_loss / len_eval_loader,
+    })
+
+
     accelerator.log({
         **log_dict,
         f"{wandb_prefix}/loss": eval_loss / len_eval_loader,
@@ -107,8 +115,9 @@ def train():
 
     parser.add_argument("--dataset_dir", type=str, default="C:/Users/LENOVO/Documents/Python Project/Handwritting_gen/iam_word_dataset", help="dataset directory")
 
-    parser.add_argument("--htr_path", type=str, default=None, help='htr checkpoint path')
-    parser.add_argument("--writer_id_path", type=str, default=None, help='writerid checkpoint path')
+    parser.add_argument("--vae_path", type=str, default="blowing-up-groundhogs/emuru_vae", help='vae checkpoint path')
+    parser.add_argument("--htr_path", type=str, default="C:/Users/LENOVO/Documents/Python Project/Handwritting_gen/Emuru-autoregressive-text-img/results_htr/21b4/model_0010", help='htr checkpoint path')
+    parser.add_argument("--writer_id_path", type=str, default="C:/Users/LENOVO/Documents/Python Project/Handwritting_gen/Emuru-autoregressive-text-img/results_wid/a803/model_0054", help='writerid checkpoint path')
 
     parser.add_argument("--lr_scheduler", type=str, default="reduce_lr_on_plateau")
     parser.add_argument("--lr_scheduler_patience", type=int, default=5)
@@ -153,7 +162,14 @@ def train():
         args.output_dir.mkdir(parents=True, exist_ok=True)
         args.logging_dir.mkdir(parents=True, exist_ok=True)
 
-    vae = AutoencoderKL.from_config(args.vae_config)
+    if args.vae_path:
+        try:
+            vae = AutoencoderKL.from_pretrained(args.vae_path)
+        except Exception as e:
+            logger.warning(f"Error occurred while loading VAE from {args.vae_path}: {e}")
+            vae = AutoencoderKL.from_config(args.vae_config)
+    else:
+        vae = AutoencoderKL.from_config(args.vae_config)
     vae.train()
     vae.requires_grad_(True)
     args.vae_params = vae.num_parameters(only_trainable=True)
@@ -263,7 +279,7 @@ def train():
 
     # Determine if we need to use .module for multi-process training
     use_module = accelerator.num_processes > 1
-
+    best_eval_epoch = -1
     for epoch in range(train_state.epoch, args.epochs):
 
         vae.train()
@@ -311,6 +327,12 @@ def train():
                 optimizer.step()
                 optimizer.zero_grad()
 
+            if train_state.global_step % args.wandb_log_interval_steps == 0:
+                wandb.log({
+                    "train/loss": train_loss,
+                    "step": train_state.global_step
+                })
+
             logs = {}
             if accelerator.sync_gradients:
                 progress_bar.update(1)
@@ -348,6 +370,9 @@ def train():
                     vae_to_save = accelerator.unwrap_model(vae)
                     vae_to_save.save_pretrained(args.output_dir / f"model_{epoch:04d}")
                     del vae_to_save
+                    remove_checkpoints = os.path.join(args.output_dir, f"model_{best_eval_epoch:04d}")
+                    shutil.rmtree(remove_checkpoints, ignore_errors=True)
+                    best_eval_epoch = epoch
                     logger.info(f"Epoch {epoch} - Best eval loss: {eval_loss}")
                 
                 train_state.last_eval = eval_loss

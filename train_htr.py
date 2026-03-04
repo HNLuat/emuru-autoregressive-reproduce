@@ -365,7 +365,7 @@ def train():
                         _ = validation(eval_loader, data_loader.alphabet, htr, accelerator, weight_dtype, smooth_ce_loss, cer, LEN_EVAL_LOADER, 'ema')
                         ema_htr.restore(htr.parameters())
 
-                    if eval_cer > train_state.best_eval:
+                    if eval_cer < train_state.best_eval:
                         train_state.best_eval = eval_cer
                         htr_to_save = accelerator.unwrap_model(htr)
                         htr_to_save.save_pretrained(args.output_dir / f"model_{epoch:04d}")
