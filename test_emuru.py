@@ -314,7 +314,7 @@ def train():
     args.adam_epsilon = 1e-8
     args.adam_weight_decay = 0.01
 
-    # args.run_name = args.resume_id if args.resume_id else args.run_id
+    args.run_name = args.resume_id if args.resume_id else args.run_id
     # args.output_dir = Path(args.output_dir) / args.run_name
     # args.logging_dir = Path(args.logging_dir) / args.run_name
     args.output_dir = Path(args.output_dir)
