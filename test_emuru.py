@@ -223,7 +223,6 @@ def gen_test_image(
         print(f"Generating images: {number_of_images}/{total_image}", end="\r")
         with torch.no_grad():
             with accelerator.autocast():
-
                 images = batch['img'].to(accelerator.device, dtype=weight_dtype)
                 text = batch['text']
 
@@ -233,7 +232,6 @@ def gen_test_image(
         ))
 
         try:
-
             gen_img = model.generate_batch(
                 style_texts=text,
                 gen_texts=gen_text,

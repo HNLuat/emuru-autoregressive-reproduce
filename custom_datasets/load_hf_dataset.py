@@ -108,8 +108,7 @@ class T5Collate:
     def __call__(self, batch):
         txts = [sample['json']['text'] for sample in batch]
         res = self.tokenizer(txts, padding=True, return_tensors='pt', return_attention_mask=True, return_length=True)
-        # res['img'] = DataProcessor.pad_images([sample['rgb.png'] for sample in batch])
-        res['img'] = [sample['rgb.png'] for sample in batch]
+        res['img'] = DataProcessor.pad_images([sample['rgb.png'] for sample in batch])
         res['text'] = txts
         return res
 
@@ -185,7 +184,8 @@ class WidthBucketSampler(Sampler):
 
         batches = []
         
-        for bucket in buckets:
+        for i, bucket in enumerate(buckets):
+            print(f"Processing bucket {i+1}/{len(buckets)} with {len(bucket)} samples")
             if self.shuffle:
                 random.shuffle(bucket)
 
@@ -347,7 +347,8 @@ class DataLoaderManager:
         root: str,
         label_csv: str,
         model_type: str,
-        use_bucket = False
+        use_train_bucket = False,
+        use_val_bucket = True,
     ):
         if model_type == 'vae' or model_type == 'htr':
             collate_fn = VAECollate(self.alphabet)
@@ -374,10 +375,9 @@ class DataLoaderManager:
             transform=iam_transform,
         )
 
-        if use_bucket:
+        if use_train_bucket:
+            print("Using WidthBucketSampler for training IAM dataset")
             train_sampler = WidthBucketSampler(train_set, batch_size=self.train_batch_size)
-            val_sampler = WidthBucketSampler(val_set, batch_size=self.eval_batch_size)
-
             train_loader = DataLoader(
                 dataset=train_set,
                 batch_sampler=train_sampler,
@@ -386,15 +386,6 @@ class DataLoaderManager:
                 collate_fn=collate_fn,
                 persistent_workers=self.persistent_workers,
             )
-
-            val_loader = DataLoader(
-                dataset=val_set,
-                batch_sampler=val_sampler,
-                num_workers=self.num_workers,
-                pin_memory=False,
-                collate_fn=collate_fn,
-            )
-
         else:
             train_loader = DataLoader(
                 dataset=train_set,
@@ -405,7 +396,17 @@ class DataLoaderManager:
                 persistent_workers=self.persistent_workers,
                 shuffle=True,
             )
-
+        if use_val_bucket:
+            print("Using WidthBucketSampler for validation IAM dataset")
+            val_sampler = WidthBucketSampler(val_set, batch_size=self.eval_batch_size, shuffle=True)
+            val_loader = DataLoader(
+                dataset=val_set,
+                batch_sampler=val_sampler,
+                num_workers=self.num_workers,
+                pin_memory=False,
+                collate_fn=collate_fn,
+            )
+        else:
             val_loader = DataLoader(
                 dataset=val_set,
                 batch_size=self.eval_batch_size,
