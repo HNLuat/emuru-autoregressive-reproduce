@@ -2,6 +2,10 @@ import argparse
 from pathlib import Path
 import math
 import uuid
+import os
+import shutil
+import matplotlib.pyplot as plt
+import numpy as np
 
 from tqdm import tqdm
 import torch
@@ -18,7 +22,6 @@ from utils import TrainState
 from custom_datasets import DataLoaderManager
 from models.emuru import Emuru, EmuruConfig
 
-
 def validation(
     eval_loader,
     model,
@@ -32,7 +35,10 @@ def validation(
     model.eval()
 
     eval_loss = 0.0
-    logged = False
+    total_logged = 0
+
+    # for batch in eval_loader:
+    #     print(f"Eval batch text: {batch['text']}")
 
     for step, batch in enumerate(eval_loader):
         with torch.no_grad():
@@ -47,50 +53,52 @@ def validation(
                 )
 
         eval_loss += loss.item()
-
+        # print(f"Eval step {step+1}/{len_eval_loader}, loss: {loss.item()}")
         # ===== LOG 5 IMAGES (only once) =====
-        if (not logged) and accelerator.is_main_process:
+        if (total_logged < log_n_images) and accelerator.is_main_process:
             log_images = []
 
             B = images.size(0)
-            n = min(log_n_images, B)
+            n = min(log_n_images - total_logged, B)
 
             log_images = []
 
-            for i in range(n):
-                try:
-                    gen_img = model.generate(
-                        style_text="",
-                        gen_text=batch['text'][i],
-                        style_img=images[i]
+            # for i in range(n):
+            i = 0
+            try:
+                print(f"generate image for {batch['text'][i]}")
+                gen_img = model.generate(
+                    style_text=batch['text'][i],
+                    gen_text=batch['text'][i],
+                    style_img=images[i]
+                )
+        
+                w, h = gen_img.size
+                if w < 5 or h < 5:
+                    raise ValueError(f"Empty image {gen_img.size}")
+                plt.imshow(gen_img)
+                plt.axis("off")
+                plt.show()
+        
+                log_images.append(
+                    wandb.Image(
+                        gen_img,
+                        caption=batch['text'][i]
                     )
+                )
+        
+            except Exception as e:
+                print(f"[WARN] generate failed at idx {i}: {e}")
             
-                    w, h = gen_img.size
-                    if w < 5 or h < 5:
-                        raise ValueError(f"Empty image {gen_img.size}")
-                    # plt.imshow(gen_img)
-                    # plt.axis("off")
-                    # plt.show()
-            
-                    log_images.append(
-                        wandb.Image(
-                            gen_img,
-                            caption=batch['text'][i]
-                        )
-                    )
-            
-                except Exception as e:
-                    print(f"[WARN] generate failed at idx {i}: {e}")
-            
-            wandb.log({
-                f"{wandb_prefix}/samples": log_images
-            })
+            # wandb.log({
+            #     f"{wandb_prefix}/samples": log_images
+            # })
 
             accelerator.log({
                 f"{wandb_prefix}/samples": log_images
             })
 
-            logged = True
+            total_logged += n
 
     avg_loss = eval_loss / len_eval_loader
 
@@ -172,6 +180,7 @@ def train():
 
     parser.add_argument("--dataset_dir", type=str, default="C:/Users/LENOVO/Documents/Python Project/Handwritting_gen/iam_word_dataset", help="dataset directory")
 
+    parser.add_argument("--T5_path", type=str, default="blowing-up-groundhogs/emuru", help='t5 checkpoint path')
     parser.add_argument("--vae_path", type=str, default="blowing-up-groundhogs/emuru_vae", help='vae checkpoint path')
 
     parser.add_argument("--gradient_accumulation_steps", type=int, default=1)
@@ -223,7 +232,16 @@ def train():
         slices_per_query=1,
         vae_channels=1
     )
-    model = Emuru(emuru_config)
+    if args.T5_path:
+        try:
+            model = Emuru.from_pretrained(args.T5_path, config=emuru_config)
+            print(f"Loaded T5 from {args.T5_path}")
+        except:
+            emuru_config.t5_name_or_path = args.T5_path
+            model = Emuru(emuru_config)
+    else:
+        model = Emuru(emuru_config)
+        print(f"No pretrained found")
 
     optimizer = torch.optim.AdamW(
         model.parameters(),
@@ -256,7 +274,7 @@ def train():
         eval_pattern=None,
         train_batch_size=args.train_batch_size,
         eval_batch_size=args.eval_batch_size,
-        num_workers=0,
+        num_workers=4,
         pin_memory=False,
         persistent_workers=False,
         tokenizer=model.tokenizer,
@@ -314,104 +332,120 @@ def train():
         except FileNotFoundError as e:
             logger.warning(f"  Checkpoint not found: {e}. Creating a new run")
 
-    wandb.login()
-    wandb.init(
-        project=args.wandb_project_name,
-        name="train_T5", 
-        config=vars(args)
-    )
+    # wandb.login()
+    # wandb.init(
+    #     project=args.wandb_project_name,
+    #     name="train_T5", 
+    #     config=vars(args)
+    # )
 
-    progress_bar = tqdm(range(train_state.global_step, args.max_train_steps), disable=not accelerator.is_local_main_process)
-    progress_bar.set_description("Steps")
+    with torch.no_grad():
+    # eval_loss = validation(eval_loader, model, accelerator, weight_dtype, LEN_EVAL_LOADER, 'eval')
+        eval_loss = validation(
+            eval_loader,
+            model,
+            accelerator,
+            weight_dtype,
+            LEN_EVAL_LOADER,
+            wandb_prefix="eval",
+            log_n_images=20
+        )
 
-    for epoch in range(train_state.epoch, args.epochs):
+    # progress_bar = tqdm(range(train_state.global_step, args.max_train_steps), disable=not accelerator.is_local_main_process)
+    # progress_bar.set_description("Steps")
 
-        model.train()
-        train_loss = 0.
+    # best_eval_epoch = 0
 
-        for batch in train_loader:
+    # for epoch in range(train_state.epoch, args.epochs):
 
-            with accelerator.accumulate(model):
-                images = batch['img'].to(weight_dtype)
-                input_ids = batch['input_ids'].long()
+    #     model.train()
+    #     train_loss = 0.
 
-                loss, _, _ = model(images, input_ids=input_ids, attention_mask=batch['attention_mask'], noise=args.teacher_noise)
+    #     for batch in train_loader:
 
-                if not torch.isfinite(loss):
-                    logger.warning("non-finite loss")
-                    optimizer.zero_grad()
-                    continue
+    #         with accelerator.accumulate(model):
+    #             images = batch['img'].to(weight_dtype)
+    #             input_ids = batch['input_ids'].long()
 
-                avg_loss = accelerator.gather(loss).mean()
-                train_loss += avg_loss.item() / args.gradient_accumulation_steps
-                accelerator.backward(loss)
+    #             loss, _, _ = model(images, input_ids=input_ids, attention_mask=batch['attention_mask'], noise=args.teacher_noise)
 
-                optimizer.step()
-                optimizer.zero_grad()
+    #             if not torch.isfinite(loss):
+    #                 logger.warning("non-finite loss")
+    #                 optimizer.zero_grad()
+    #                 continue
 
-            if train_state.global_step % args.wandb_log_interval_steps == 0:
-                wandb.log({
-                    "train/loss": train_loss,
-                    "step": train_state.global_step
-                })
+    #             avg_loss = accelerator.gather(loss).mean()
+    #             train_loss += avg_loss.item() / args.gradient_accumulation_steps
+    #             accelerator.backward(loss)
 
-            logs = {}
-            if accelerator.sync_gradients:
-                progress_bar.update(1)
+    #             optimizer.step()
+    #             optimizer.zero_grad()
 
-                train_state.global_step += 1
-                logs["global_step"] = train_state.global_step
-                logs['train/loss'] = train_loss
-                train_loss = 0.
+    #         if train_state.global_step % args.wandb_log_interval_steps == 0:
+    #             wandb.log({
+    #                 "train/loss": train_loss,
+    #                 "step": train_state.global_step
+    #             })
 
-            logs["lr"] = optimizer.param_groups[0]['lr']
-            logs['epoch'] = epoch
+    #         logs = {}
+    #         if accelerator.sync_gradients:
+    #             progress_bar.update(1)
 
-            progress_bar.set_postfix(**logs)
-            if train_state.global_step % args.wandb_log_interval_steps == 0:
-                accelerator.log(logs)
+    #             train_state.global_step += 1
+    #             logs["global_step"] = train_state.global_step
+    #             logs['train/loss'] = train_loss
+    #             train_loss = 0.
 
-        train_state.epoch += 1
+    #         logs["lr"] = optimizer.param_groups[0]['lr']
+    #         logs['epoch'] = epoch
 
-        if epoch % args.eval_epochs == 0 and accelerator.is_main_process:
-            with torch.no_grad():
-                # eval_loss = validation(eval_loader, model, accelerator, weight_dtype, LEN_EVAL_LOADER, 'eval')
-                eval_loss = validation(
-                    eval_loader,
-                    model,
-                    accelerator,
-                    weight_dtype,
-                    LEN_EVAL_LOADER,
-                    wandb_prefix="eval",
-                    log_n_images=5
-                )
-                eval_loss = broadcast(torch.tensor(eval_loss, device=accelerator.device), from_process=0)
+    #         progress_bar.set_postfix(**logs)
+    #         if train_state.global_step % args.wandb_log_interval_steps == 0:
+    #             accelerator.log(logs)
+
+    #     train_state.epoch += 1
+
+    #     if epoch % args.eval_epochs == 0 and accelerator.is_main_process:
+    #         with torch.no_grad():
+    #             # eval_loss = validation(eval_loader, model, accelerator, weight_dtype, LEN_EVAL_LOADER, 'eval')
+    #             eval_loss = validation(
+    #                 eval_loader,
+    #                 model,
+    #                 accelerator,
+    #                 weight_dtype,
+    #                 LEN_EVAL_LOADER,
+    #                 wandb_prefix="eval",
+    #                 log_n_images=5
+    #             )
+    #             eval_loss = broadcast(torch.tensor(eval_loss, device=accelerator.device), from_process=0)
                 
-                if eval_loss < train_state.best_eval:
-
-                    train_state.best_eval = eval_loss
-                    model_to_save = accelerator.unwrap_model(model)
-                    model_to_save.save_pretrained(args.output_dir / f"model_{epoch:04d}")
-                    del model_to_save
-                    logger.info(f"Epoch {epoch} - Best eval loss: {eval_loss}")
+    #             if eval_loss < train_state.best_eval:
+    #                 train_state.best_eval = eval_loss
+    #                 model_to_save = accelerator.unwrap_model(model)
+    #                 model_to_save.save_pretrained(args.output_dir / f"model_{epoch:04d}")
+    #                 del model_to_save
+    #                 remove_checkpoints = os.path.join(args.output_dir, f"model_{best_eval_epoch:04d}")
+    #                 shutil.rmtree(remove_checkpoints, ignore_errors=True)
+    #                 best_eval_epoch = epoch
+    #                 logger.info(f"Epoch {epoch} - Best eval loss: {eval_loss}")
                 
-                train_state.last_eval = eval_loss
+    #             train_state.last_eval = eval_loss
 
-                test_loss = karaoke_test(karaoke_loader, model, accelerator, weight_dtype, 'test')
-                logger.info(f"Epoch {epoch} - Test loss: {test_loss}")
+    #             test_loss = karaoke_test(karaoke_loader, model, accelerator, weight_dtype, 'test')
+    #             logger.info(f"Epoch {epoch} - Test loss: {test_loss}")
                 
-                accelerator.save_state()
+    #             accelerator.save_state()
 
-            lr_scheduler.step(eval_loss)
-            accelerator.wait_for_everyone()
+    #         lr_scheduler.step(eval_loss)
+    #         accelerator.wait_for_everyone()
 
-    accelerator.wait_for_everyone()
-    if accelerator.is_main_process:
-        model = accelerator.unwrap_model(model)
-        model.save_pretrained(args.output_dir)
+    # accelerator.wait_for_everyone()
+    # if accelerator.is_main_process:
+    #     model = accelerator.unwrap_model(model)
+    #     model.save_pretrained(args.output_dir)
 
-    accelerator.end_training()
-    logger.info("***** Training finished *****")
+    # accelerator.end_training()
+    # logger.info("***** Training finished *****")
 
 
 if __name__ == "__main__":
