@@ -203,7 +203,6 @@ def gen_test_image(
     model.eval()
 
     number_of_images = 0
-    gt_text = []
     unique_texts = []
 
     if text_path:
@@ -240,7 +239,8 @@ def gen_test_image(
         try:
             gen_img = model.generate_batch(
                 style_texts=text,
-                gen_texts=gen_text,
+                # gen_texts=gen_text,
+                gen_text = text,
                 style_imgs=images,
                 lengths=[i.size(-1) for i in images]
             )
@@ -314,10 +314,8 @@ def train():
     args.adam_weight_decay = 0.01
 
     args.run_name = args.resume_id if args.resume_id else args.run_id
-    # args.output_dir = Path(args.output_dir) / args.run_name
-    # args.logging_dir = Path(args.logging_dir) / args.run_name
-    args.output_dir = Path(args.output_dir)
-    args.logging_dir = Path(args.logging_dir)
+    args.output_dir = Path(args.output_dir) / args.run_name
+    args.logging_dir = Path(args.logging_dir) / args.run_name
 
     accelerator_project_config = ProjectConfiguration(
         project_dir=str(args.output_dir),
