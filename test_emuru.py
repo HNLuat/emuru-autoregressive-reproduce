@@ -317,6 +317,8 @@ def train():
     # args.run_name = args.resume_id if args.resume_id else args.run_id
     # args.output_dir = Path(args.output_dir) / args.run_name
     # args.logging_dir = Path(args.logging_dir) / args.run_name
+    args.output_dir = Path(args.output_dir)
+    args.logging_dir = Path(args.logging_dir)
 
     accelerator_project_config = ProjectConfiguration(
         project_dir=str(args.output_dir),
