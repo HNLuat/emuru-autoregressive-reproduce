@@ -217,10 +217,10 @@ def gen_test_image(
     os.makedirs(image_path, exist_ok=True)
 
     for step, batch in enumerate(eval_loader):
-
         if number_of_images >= total_image:
             break
-
+        
+        print(f"Generating images: {number_of_images}/{total_image}", end="\r")
         with torch.no_grad():
             with accelerator.autocast():
 
@@ -451,7 +451,13 @@ def train():
         except FileNotFoundError as e:
             logger.warning(f"  Checkpoint not found: {e}. Creating a new run")
 
-    
+    wandb.login()
+    wandb.init(
+        project=args.wandb_project_name,
+        name="test_emuru", 
+        config=vars(args)
+    )
+
     gen_test_image(
         eval_loader,
         model, 
