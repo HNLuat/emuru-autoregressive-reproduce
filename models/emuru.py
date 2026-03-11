@@ -113,8 +113,12 @@ class Emuru(PreTrainedModel):
                 - z (torch.Tensor): Sampled latent vector from VAE.
         """
         decoder_inputs_embeds, z_sequence, z = self._img_encode(img, noise)
+        # print(f"Decoder input embeds shape: {decoder_inputs_embeds.shape}")
+        # print(f"Input IDs shape: {input_ids.shape}")
+        # print(f"Attention mask shape: {attention_mask.shape}")
 
         output = self.T5(input_ids, attention_mask=attention_mask, decoder_inputs_embeds=decoder_inputs_embeds)
+        # print(f"T5 output logits shape: {output.logits.shape}")
         vae_latent = self.t5_to_vae(output.logits[:, :-1])
         pred_latent = self.z_rearrange(vae_latent)
 
@@ -154,7 +158,12 @@ class Emuru(PreTrainedModel):
         texts = [style_text + ' ' + gen_text]
         imgs, _, img_ends = self._generate(texts=texts, imgs=style_img, **kwargs)
         imgs = (imgs + 1) / 2
-        return F.to_pil_image(imgs[0, ..., style_img.size(-1):img_ends.item()].detach().cpu())
+        # print("gen image shape", imgs.shape)
+        # print("style_img shape", style_img.shape)
+        # print("image ends", img_ends.item())
+        # print("image -1", imgs[:, ..., style_img.size(-1):img_ends.item()].detach().cpu())
+        # return F.to_pil_image(imgs[0, ..., style_img.size(-1):img_ends.item()].detach().cpu())
+        return F.to_pil_image(imgs[0, ..., :].detach().cpu())
     
     @torch.inference_mode()
     def generate_batch(
@@ -230,6 +239,7 @@ class Emuru(PreTrainedModel):
 
         if z_sequence is None:
             _, z_sequence, _ = self._img_encode(imgs)
+
         
         if lengths is None:
             lengths = [imgs.size(-1)] * imgs.size(0)
@@ -254,6 +264,8 @@ class Emuru(PreTrainedModel):
                 decoder_inputs_embeds = torch.cat([sos, decoder_inputs_embeds], dim=1)
             output = self.T5(input_ids, decoder_inputs_embeds=decoder_inputs_embeds)
             vae_latent = self.t5_to_vae(output.logits[:, -1:])
+            # print("output logits shape:", output.logits.shape)
+            # print("vae_latent shape:", vae_latent.shape)
 
             mask_slice = z_sequence_mask[:, token_idx].unsqueeze(-1)
             if token_idx < z_sequence.size(1):
@@ -266,9 +278,12 @@ class Emuru(PreTrainedModel):
                 similarity = torch.nn.functional.cosine_similarity(canvas_sequence, pad_token, dim=-1)
                 windows = (similarity > self.padding_token_threshold).unfold(1, min(stopping_after, similarity.size(-1)), 1)
                 window_sums = windows.to(torch.int).sum(dim=2)
+                # print("similarity shape:", similarity.shape)
+                # print("window_sums shape:", window_sums.shape)
 
                 for i in range(similarity.size(0)):
                     idx = (window_sums[i] > (stopping_after - stopping_patience)).nonzero(as_tuple=True)[0]
+                    # print(f"Sequence {i} - window sums: {window_sums[i]}, stopping indices: {idx}")
                     if idx.numel() > 0:
                         seq_stops[i] = idx[0].item()
 
@@ -276,8 +291,13 @@ class Emuru(PreTrainedModel):
                     break
             elif stopping_criteria == 'none':
                 pass
-
+        
+        # print("Initial z_sequence shape:", z_sequence.shape)
+        # print(len(lengths), lengths)
+        # print("canvas_sequence", canvas_sequence.shape)
+        # print("rearrange canvas_sequence", self.z_rearrange(canvas_sequence).shape)
         imgs = torch.clamp(self.vae.decode(self.z_rearrange(canvas_sequence)).sample, -1, 1)
+        # print("vae.decode: ", self.vae.decode(self.z_rearrange(canvas_sequence)).sample.shape)
         return imgs, canvas_sequence, seq_stops * 8
     
     def _img_encode(
