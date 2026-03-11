@@ -16,6 +16,8 @@ from PIL import Image
 import torchvision.transforms as T
 from hwd.datasets.shtg import KaraokeLines
 import torchvision.transforms.functional as TF
+from torch.utils.data import Sampler
+import random
 
 
 from .alphabet import Alphabet
@@ -163,6 +165,43 @@ def karaoke_collate_fn(batch):
             out[key] = values
     return out
 
+class WidthBucketSampler(Sampler):
+    def __init__(self, dataset, batch_size, bucket_size=100, shuffle=True):
+        self.dataset = dataset
+        self.batch_size = batch_size
+        self.bucket_size = bucket_size
+        self.shuffle = shuffle
+        
+        # lấy width của tất cả sample
+        self.indices = list(range(len(dataset)))
+        self.indices.sort(key=lambda i: dataset[i]['width'])
+
+    def __iter__(self):
+        buckets = [
+            self.indices[i:i+self.bucket_size]
+            for i in range(0, len(self.indices), self.bucket_size)
+        ]
+
+        batches = []
+        
+        for bucket in buckets:
+            if self.shuffle:
+                random.shuffle(bucket)
+
+            for i in range(0, len(bucket), self.batch_size):
+                batch = bucket[i:i+self.batch_size]
+                if len(batch) == self.batch_size:
+                    batches.append(batch)
+
+        if self.shuffle:
+            random.shuffle(batches)
+
+        for batch in batches:
+            yield batch
+
+    def __len__(self):
+        return len(self.indices) // self.batch_size
+
 class IAMWordDataset(Dataset):
     def __init__(self, root, csv_path, split, alphabet, transform):
         self.root = root
@@ -195,6 +234,7 @@ class IAMWordDataset(Dataset):
                 "writer_id": row.get("writer_id", -1),
             },
             "encoded_text": self.alphabet.encode(text),
+            "width": rgb.size[0],
         }
 
         return sample
@@ -332,25 +372,35 @@ class DataLoaderManager:
             transform=iam_transform,
         )
 
+        # train_sampler = WidthBucketSampler(train_set, batch_size=self.train_batch_size)
+
+        val_sampler = WidthBucketSampler(val_set, batch_size=self.eval_batch_size)
+
+        # train_loader = DataLoader(
+        #     dataset=train_set,
+        #     batch_sampler=train_sampler,
+        #     num_workers=self.num_workers,
+        #     pin_memory=self.pin_memory,
+        #     collate_fn=collate_fn,
+        #     persistent_workers=self.persistent_workers,
+        # )
+
         train_loader = DataLoader(
-            train_set,
+            dataset=train_set,
             batch_size=self.train_batch_size,
-            shuffle=True,
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
             collate_fn=collate_fn,
-            drop_last=True,
             persistent_workers=self.persistent_workers,
+            shuffle=True,
         )
 
         val_loader = DataLoader(
-            val_set,
-            batch_size=self.eval_batch_size,
-            shuffle=False,
+            dataset=val_set,
+            batch_sampler=val_sampler,
             num_workers=4,
             pin_memory=False,
             collate_fn=collate_fn,
-            drop_last=False,
         )
 
         return train_loader, val_loader
