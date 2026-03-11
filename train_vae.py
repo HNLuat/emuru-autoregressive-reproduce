@@ -115,7 +115,7 @@ def train():
 
     parser.add_argument("--dataset_dir", type=str, default="C:/Users/LENOVO/Documents/Python Project/Handwritting_gen/iam_word_dataset", help="dataset directory")
 
-    parser.add_argument("--vae_path", type=str, default="blowing-up-groundhogs/emuru_vae", help='vae checkpoint path')
+    parser.add_argument("--vae_path", type=str, default=None, help='vae checkpoint path')
     parser.add_argument("--htr_path", type=str, default="C:/Users/LENOVO/Documents/Python Project/Handwritting_gen/Emuru-autoregressive-text-img/results_htr/21b4/model_0010", help='htr checkpoint path')
     parser.add_argument("--writer_id_path", type=str, default="C:/Users/LENOVO/Documents/Python Project/Handwritting_gen/Emuru-autoregressive-text-img/results_wid/a803/model_0054", help='writerid checkpoint path')
 
