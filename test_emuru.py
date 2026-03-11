@@ -231,16 +231,16 @@ def gen_test_image(
                 images = batch['img'].to(accelerator.device, dtype=weight_dtype)
                 text = batch['text']
 
-        gen_text = list(np.random.choice(
-            unique_texts if unique_texts else text,
-            size=len(text)
-        ))
+        # gen_text = list(np.random.choice(
+        #     unique_texts if unique_texts else text,
+        #     size=len(text)
+        # ))
+        gen_text = text
 
         try:
             gen_img = model.generate_batch(
                 style_texts=text,
-                # gen_texts=gen_text,
-                gen_texts=text,
+                gen_texts=gen_text,
                 style_imgs=images,
                 lengths=[i.size(-1) for i in images]
             )
