@@ -240,7 +240,7 @@ def gen_test_image(
             gen_img = model.generate_batch(
                 style_texts=text,
                 # gen_texts=gen_text,
-                gen_text = text,
+                gen_texts=text,
                 style_imgs=images,
                 lengths=[i.size(-1) for i in images]
             )
