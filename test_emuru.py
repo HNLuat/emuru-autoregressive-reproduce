@@ -215,6 +215,12 @@ def gen_test_image(
 
     image_path = os.path.join(output_dir, "gen_image")
     os.makedirs(image_path, exist_ok=True)
+    gt_output_file = os.path.join(output_dir, "gt_texts.csv")
+    file_exists = os.path.exists(gt_output_file)
+    csv_file = open(gt_output_file, "a", newline="", encoding="utf-8")
+    writer = csv.writer(csv_file)
+    if not file_exists:
+        writer.writerow(["image_path", "label"])
 
     for step, batch in enumerate(eval_loader):
         if number_of_images >= total_image:
@@ -254,7 +260,9 @@ def gen_test_image(
 
                 img.convert("L").save(save_path)
 
-                gt_text.append(txt)
+                writer.writerow([f"gen_image/{img_name}", txt])
+                csv_file.flush()
+
                 number_of_images += 1
 
         except Exception as e:
@@ -264,21 +272,12 @@ def gen_test_image(
     del model
     torch.cuda.empty_cache()
 
-    generate_label = {
-        "image_path": [f"gen_image/gen_image_{i}.png" for i in range(len(gt_text))],
-        "label": gt_text
-    }
-
-    gt_output_file = os.path.join(output_dir, "gt_texts.csv")
-    pd.DataFrame(generate_label).to_csv(gt_output_file, index=False)
-
-
 def train():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output_dir", type=str, default='results_emuru', help="output directory")
     parser.add_argument("--logging_dir", type=str, default='results_t5', help="logging directory")
     parser.add_argument("--train_batch_size", type=int, default=4, help="train batch size") 
-    parser.add_argument("--eval_batch_size", type=int, default=4, help="eval batch size")
+    parser.add_argument("--eval_batch_size", type=int, default=1, help="eval batch size")
     parser.add_argument("--epochs", type=int, default=100, help="number of train epochs")
     parser.add_argument("--lr", type=float, default=1e-4, help="learning rate")
     parser.add_argument("--lr_scheduler", type=str, default="reduce_lr_on_plateau")
