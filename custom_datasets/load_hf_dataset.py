@@ -108,7 +108,8 @@ class T5Collate:
     def __call__(self, batch):
         txts = [sample['json']['text'] for sample in batch]
         res = self.tokenizer(txts, padding=True, return_tensors='pt', return_attention_mask=True, return_length=True)
-        res['img'] = DataProcessor.pad_images([sample['rgb.png'] for sample in batch])
+        # res['img'] = DataProcessor.pad_images([sample['rgb.png'] for sample in batch])
+        res['img'] = [sample['rgb.png'] for sample in batch]
         res['text'] = txts
         return res
 
@@ -346,6 +347,7 @@ class DataLoaderManager:
         root: str,
         label_csv: str,
         model_type: str,
+        use_bucket = False
     ):
         if model_type == 'vae' or model_type == 'htr':
             collate_fn = VAECollate(self.alphabet)
@@ -372,35 +374,44 @@ class DataLoaderManager:
             transform=iam_transform,
         )
 
-        # train_sampler = WidthBucketSampler(train_set, batch_size=self.train_batch_size)
+        if use_bucket:
+            train_sampler = WidthBucketSampler(train_set, batch_size=self.train_batch_size)
+            val_sampler = WidthBucketSampler(val_set, batch_size=self.eval_batch_size)
 
-        val_sampler = WidthBucketSampler(val_set, batch_size=self.eval_batch_size)
+            train_loader = DataLoader(
+                dataset=train_set,
+                batch_sampler=train_sampler,
+                num_workers=self.num_workers,
+                pin_memory=self.pin_memory,
+                collate_fn=collate_fn,
+                persistent_workers=self.persistent_workers,
+            )
 
-        # train_loader = DataLoader(
-        #     dataset=train_set,
-        #     batch_sampler=train_sampler,
-        #     num_workers=self.num_workers,
-        #     pin_memory=self.pin_memory,
-        #     collate_fn=collate_fn,
-        #     persistent_workers=self.persistent_workers,
-        # )
+            val_loader = DataLoader(
+                dataset=val_set,
+                batch_sampler=val_sampler,
+                num_workers=self.num_workers,
+                pin_memory=False,
+                collate_fn=collate_fn,
+            )
 
-        train_loader = DataLoader(
-            dataset=train_set,
-            batch_size=self.train_batch_size,
-            num_workers=self.num_workers,
-            pin_memory=self.pin_memory,
-            collate_fn=collate_fn,
-            persistent_workers=self.persistent_workers,
-            shuffle=True,
-        )
+        else:
+            train_loader = DataLoader(
+                dataset=train_set,
+                batch_size=self.train_batch_size,
+                num_workers=self.num_workers,
+                pin_memory=self.pin_memory,
+                collate_fn=collate_fn,
+                persistent_workers=self.persistent_workers,
+                shuffle=True,
+            )
 
-        val_loader = DataLoader(
-            dataset=val_set,
-            batch_sampler=val_sampler,
-            num_workers=4,
-            pin_memory=False,
-            collate_fn=collate_fn,
-        )
+            val_loader = DataLoader(
+                dataset=val_set,
+                batch_size=self.eval_batch_size,
+                num_workers=self.num_workers,
+                pin_memory=False,
+                collate_fn=collate_fn,
+            )
 
         return train_loader, val_loader
