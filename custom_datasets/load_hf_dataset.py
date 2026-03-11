@@ -164,6 +164,7 @@ def karaoke_collate_fn(batch):
         else:
             out[key] = values
     return out
+    
 
 class WidthBucketSampler(Sampler):
     def __init__(self, dataset, batch_size, bucket_size=100, shuffle=True):
@@ -194,7 +195,7 @@ class WidthBucketSampler(Sampler):
                 if len(batch) == self.batch_size:
                     batches.append(batch)
 
-        if self.shuffle:
+        if self.shuffle: 
             random.shuffle(batches)
 
         for batch in batches:

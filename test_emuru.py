@@ -277,8 +277,8 @@ def train():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output_dir", type=str, default='results_emuru', help="output directory")
     parser.add_argument("--logging_dir", type=str, default='results_t5', help="logging directory")
-    parser.add_argument("--train_batch_size", type=int, default=16, help="train batch size") 
-    parser.add_argument("--eval_batch_size", type=int, default=16, help="eval batch size")
+    parser.add_argument("--train_batch_size", type=int, default=4, help="train batch size") 
+    parser.add_argument("--eval_batch_size", type=int, default=4, help="eval batch size")
     parser.add_argument("--epochs", type=int, default=100, help="number of train epochs")
     parser.add_argument("--lr", type=float, default=1e-4, help="learning rate")
     parser.add_argument("--lr_scheduler", type=str, default="reduce_lr_on_plateau")
@@ -293,6 +293,8 @@ def train():
     parser.add_argument("--wandb_project_name", type=str, default="iam-handwriting-emuru", help="wandb project name")
     parser.add_argument('--wandb_log_interval_steps', type=int, default=200, help="wandb log interval")
 
+    parser.add_argument("--use_train_bucket", type=bool, default=False, help="whether to bucket train dataset")
+    parser.add_argument("--use_val_bucket", type=bool, default=False, help="whether to bucket eval dataset")
     parser.add_argument("--dataset_dir", type=str, default="C:/Users/LENOVO/Documents/Python Project/Handwritting_gen/iam_word_dataset", help="dataset directory")
 
     parser.add_argument("--T5_path", type=str, default="blowing-up-groundhogs/emuru", help='t5 checkpoint path')
@@ -404,6 +406,8 @@ def train():
         root=dataset_dir,
         label_csv=f"{dataset_dir}/label.csv",
         model_type="t5",   # hoặc 'vae', 'wid'
+        use_train_bucket=args.use_train_bucket,
+        use_val_bucket=args.use_val_bucket
     )
     NUM_SAMPLES_TRAIN = len(train_loader.dataset)
     NUM_SAMPLES_EVAL = len(eval_loader.dataset)
